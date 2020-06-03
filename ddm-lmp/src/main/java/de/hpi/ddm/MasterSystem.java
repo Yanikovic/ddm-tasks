@@ -1,14 +1,10 @@
 package de.hpi.ddm;
 
-import java.util.Scanner;
-import java.util.concurrent.TimeUnit;
-
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.cluster.Cluster;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import de.hpi.ddm.actors.Master;
 import de.hpi.ddm.actors.Reaper;
 import de.hpi.ddm.actors.Worker;
@@ -16,6 +12,9 @@ import de.hpi.ddm.configuration.Configuration;
 import de.hpi.ddm.configuration.ConfigurationSingleton;
 import scala.concurrent.Await;
 import scala.concurrent.duration.Duration;
+
+import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 public class MasterSystem {
 	
@@ -37,30 +36,20 @@ public class MasterSystem {
 		
 		ActorRef master = system.actorOf(Master.props(), Master.DEFAULT_NAME);
 		
-		Cluster.get(system).registerOnMemberUp(new Runnable() {
-			@Override
-			public void run() {
-				for (int i = 0; i < c.getNumWorkers(); i++)
-					system.actorOf(Worker.props(), Worker.DEFAULT_NAME + i);
-			}
+		Cluster.get(system).registerOnMemberUp(() -> {
+			for (int i = 0; i < c.getNumWorkers(); i++)
+				system.actorOf(Worker.props(), Worker.DEFAULT_NAME + i);
 		});
 		
-		Cluster.get(system).registerOnMemberRemoved(new Runnable() {
-			@Override
-			public void run() {
-				system.terminate();
-
-				new Thread() {
-					@Override
-					public void run() {
-						try {
-							Await.ready(system.whenTerminated(), Duration.create(10, TimeUnit.SECONDS));
-						} catch (Exception e) {
-							System.exit(-1);
-						}
-					}
-				}.start();
-			}
+		Cluster.get(system).registerOnMemberRemoved(() -> {
+			system.terminate();
+			new Thread(() -> {
+				try {
+					Await.ready(system.whenTerminated(), Duration.create(10, TimeUnit.SECONDS));
+				} catch (Exception e) {
+					System.exit(-1);
+				}
+			}).start();
 		});
 		
 		System.out.println("Press <enter> to end the application!");

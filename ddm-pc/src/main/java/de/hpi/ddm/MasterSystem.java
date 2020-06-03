@@ -1,23 +1,18 @@
 package de.hpi.ddm;
 
-import java.util.Scanner;
-import java.util.concurrent.TimeUnit;
-
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.cluster.Cluster;
-import de.hpi.ddm.actors.Collector;
-import de.hpi.ddm.actors.Master;
-import de.hpi.ddm.actors.Reader;
-import de.hpi.ddm.actors.Reaper;
-import de.hpi.ddm.actors.Worker;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import de.hpi.ddm.actors.*;
 import de.hpi.ddm.configuration.Configuration;
 import de.hpi.ddm.configuration.ConfigurationSingleton;
 import scala.concurrent.Await;
 import scala.concurrent.duration.Duration;
+
+import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 public class MasterSystem {
 	
@@ -34,6 +29,7 @@ public class MasterSystem {
 			.withFallback(ConfigFactory.load("application"));
 		
 		final ActorSystem system = ActorSystem.create(c.getActorSystemName(), config);
+
 
 	//	ActorRef clusterListener = system.actorOf(ClusterListener.props(), ClusterListener.DEFAULT_NAME);
 	//	ActorRef metricsListener = system.actorOf(MetricsListener.props(), MetricsListener.DEFAULT_NAME);
