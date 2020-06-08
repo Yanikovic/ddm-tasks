@@ -91,6 +91,7 @@ public class Master extends AbstractLoggingActor {
 		// the receiver of the large message is the worker that registered in this moment
 		// we (master) are the sender of the message
 		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(this.data, this.sender()), this.self());
+		//this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>("Dies ist ein Test String", this.sender()), this.self());
 	}
 	
 	protected void handle(Terminated message) {

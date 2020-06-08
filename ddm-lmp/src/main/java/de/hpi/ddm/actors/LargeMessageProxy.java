@@ -6,6 +6,7 @@ import akka.actor.ActorSelection;
 import akka.actor.Props;
 import akka.serialization.Serialization;
 import akka.serialization.SerializationExtension;
+import akka.serialization.Serializers;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,6 +24,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     public static final String DEFAULT_NAME = "largeMessageProxy";
     public static final int DEFAULT_BATCH_SIZE = 100000;
 
+
     public static Props props() {
         return Props.create(LargeMessageProxy.class);
     }
@@ -30,6 +32,25 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     ////////////////////
     // Actor Messages //
     ////////////////////
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PostLargeMessage implements Serializable {
+        private static final long serialVersionUID = -3132821777758085789L;
+        private ActorRef sender;
+        private ActorRef receiver;
+        private int serializerID;
+        private String manifest;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PreLargeMessage implements Serializable {
+        private static final long serialVersionUID = 6970977148928832981L;
+        private int expectedNumberOfBytes;
+    }
 
     @Data
     @NoArgsConstructor
@@ -43,9 +64,17 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class BytesMessage<T> implements Serializable {
+    public static class BytesBatchMessage implements Serializable {
         private static final long serialVersionUID = 4057807743872319842L;
-        private T bytes;
+        private byte[] bytes;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AssembledLargeMessage implements Serializable {
+        private static final long serialVersionUID = 9009967346569634538L;
+        private Object message;
         private ActorRef sender;
         private ActorRef receiver;
     }
@@ -54,7 +83,8 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     // Actor State //
     /////////////////
 
-    private ByteBuffer target;
+    private ByteBuffer receiverProxyAssembler;
+    private final Serialization serialization = SerializationExtension.get(this.context().system());
 
     /////////////////////
     // Actor Lifecycle //
@@ -68,54 +98,76 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(LargeMessage.class, this::handle)
-                .match(BytesMessage.class, this::handle)
+                .match(BytesBatchMessage.class, this::handle)
+                .match(PreLargeMessage.class, this::handle)
+                .match(PostLargeMessage.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
     }
 
-    private void handle(LargeMessage<?> message) {
-        ActorRef receiver = message.getReceiver();
-        // select receiver proxy on the receiving actor system via remote
-        // select via receiver path
-        // receiver is really a worker actor
-        ActorSelection receiverProxy = this.context().actorSelection(receiver.path().child(DEFAULT_NAME));
-
-        Serialization serialization = SerializationExtension.get(this.context().system());
-        byte[] bytes = serialization.serialize(message).get();
-        byte[][] byteBatches = splitSerializedObject(bytes);
-
-        // This will definitely fail in a distributed setting if the serialized message is large!
-        // Solution options:
-        // 1. Serialize the object and send its bytes batch-wise (make sure to use artery's side channel then).
-        // 2. Serialize the object and send its bytes via Akka streaming.
-        // 3. Send the object via Akka's http client-server component.
-        // 4. Other ideas ...
-
-        // construct message for receiver proxy, translate large message into bytes message
-        // in the message we encode the master as the sender and the worker as the receiver (no proxy info included)
-        for (byte[] batch : byteBatches) {
-            receiverProxy.tell(new BytesMessage<>(batch, this.sender(), message.getReceiver()), this.self());
-        }
+    private void handle(PreLargeMessage preLargeMessage) {
+        receiverProxyAssembler = ByteBuffer.allocate(preLargeMessage.getExpectedNumberOfBytes());
     }
 
-    private void handle(BytesMessage<?> message) {
+    private void handle(PostLargeMessage postLargeMessage) {
+        byte[] serializedLargeMessage = receiverProxyAssembler.array();
+        receiverProxyAssembler = null;
+        Object deserializedLargeMessage = deserialize(serializedLargeMessage, postLargeMessage);
+
+        postLargeMessage.getReceiver().tell(
+                new AssembledLargeMessage(deserializedLargeMessage, postLargeMessage.getSender(), postLargeMessage.getReceiver()),
+                postLargeMessage.getSender());
+    }
+
+    private void handle(LargeMessage<?> message) {
+        ActorRef receiver = message.getReceiver();
+        ActorSelection receiverProxy = this.context().actorSelection(receiver.path().child(DEFAULT_NAME));
+        if (receiverProxy.anchorPath().toString().contains("@")) {
+            System.out.println("remote");
+        } else {
+            System.out.println("local");
+        }
+
+
+        byte[] bytes = serialize(message.getMessage(), serialization);
+        int serializerID = serialization.findSerializerFor(message.getMessage()).identifier();
+        String manifest = Serializers.manifestFor(serialization.findSerializerFor(message.getMessage()), message.getMessage());
+
+        receiverProxy.tell(new PreLargeMessage(bytes.length), this.self());
+
+        byte[][] byteBatches = splitSerializedObject(bytes);
+
+        for (byte[] batch : byteBatches) {
+            receiverProxy.tell(new BytesBatchMessage(batch), this.self());
+        }
+        // construct message for receiver proxy
+        // in the message we encode the master as the sender and the worker as the receiver (no proxy info included)
+        // this.self is the actor ref to ourselves (in this case the sender side of the proxy)
+        // this.sender is the sender of the large message we currently deal with (master)
+        // message.getReceiver is the true receiver of the large message which is a worker
+        receiverProxy
+                .tell(new PostLargeMessage(this.sender(), message.getReceiver(), serializerID, manifest),
+                        this.self());
+    }
+
+    private void handle(BytesBatchMessage message) {
         // Reassemble the message content, deserialize it and/or load the content from some local location before forwarding its content.
-        System.out.println(message.getReceiver());
-        //message.getReceiver().tell(message.getBytes(), message.getSender());
+        receiverProxyAssembler.put(message.getBytes());
     }
 
     ////////////////////
     // Actor Utils    //
     ////////////////////
 
-    private static byte[] mergeSerializedObject(byte[][] byteBatches, int length) {
-        ByteBuffer target = ByteBuffer.wrap(new byte[length]);
-        for (byte[] batch : byteBatches) {
-            target.put(batch);
-        }
-        return target.array();
+    private <T> byte[] serialize(T message, Serialization serialization) {
+        return serialization.serialize(message).get();
     }
 
+    private Object deserialize(byte[] bytes, PostLargeMessage serializationInfo) {
+        int serializerID = serializationInfo.getSerializerID();
+        String manifest = serializationInfo.getManifest();
+        return serialization.deserialize(bytes, serializerID, manifest).get();
+    }
 
     private static byte[][] splitSerializedObject(byte[] bytes) {
         final int length = bytes.length;
