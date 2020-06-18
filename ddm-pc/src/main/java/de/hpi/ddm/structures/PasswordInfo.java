@@ -18,17 +18,7 @@ public class PasswordInfo {
     private String passwordHash;
     private String[] hintHashes;
     private int currHintIndex;
-
-    public static void main(String[] args) {
-        PasswordInfo info = new PasswordInfo(new String[]{"1", "Thorsten", "ABCDE", "10", "xxxx", "xyz", "xyz"});
-        System.out.println(info.passwordChars);
-        info.applyHint("EADB");
-        System.out.println(Arrays.toString(info.universe));
-        System.out.println(Arrays.toString(info.passwordChars));
-        info.applyHint("DCBA");
-        System.out.println(Arrays.toString(info.universe));
-        System.out.println(Arrays.toString(info.passwordChars));
-    }
+    private String password;
 
     public PasswordInfo(String[] line) {
         this.name = line[1];
@@ -42,6 +32,10 @@ public class PasswordInfo {
 
     public String getCurrentHint() {
         return hintHashes[currHintIndex];
+    }
+
+    public int getNumberOfUniqueCharsUsed() {
+        return universe.length - hintHashes.length;
     }
 
     public void incrementHintIndex() {

@@ -69,7 +69,9 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         private byte[] bytes;
     }
 
-    @Data @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class LocalMessage<T> implements Serializable {
         private static final long serialVersionUID = -7642088498409543951L;
         private T bytes;

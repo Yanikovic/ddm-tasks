@@ -12,7 +12,7 @@ public class Iterators {
     public static void main(String[] args) {
         Iterator<String> combinations = new CombinationRepetition(new char[]{'A', 'B', 'C', 'D', 'E'}, 6).iterator();
         int ctr = 0;
-        while(combinations.hasNext()) {
+        while (combinations.hasNext()) {
             System.out.println(combinations.next());
             ctr++;
         }

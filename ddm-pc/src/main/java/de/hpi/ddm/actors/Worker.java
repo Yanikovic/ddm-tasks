@@ -58,10 +58,12 @@ public class Worker extends AbstractLoggingActor {
     public static class PasswordWorkload extends Workload implements Serializable {
         private static final long serialVersionUID = -8426611880712186309L;
         private int passwordLength;
+        private int numCharsUsedForPassword;
 
         public PasswordWorkload(int passwordID, char[] universe, PasswordInfo info) {
             super(passwordID, universe, info.getPasswordHash());
             this.passwordLength = info.getPasswordLength();
+            this.numCharsUsedForPassword = info.getNumberOfUniqueCharsUsed();
         }
     }
 
@@ -119,11 +121,9 @@ public class Worker extends AbstractLoggingActor {
     }
 
     private void handle(HintWorkload hintWorkload) {
-        //System.out.println("Charset: " + Arrays.toString(hintWorkload.getUniverse()));
         for (String permutation: new Iterators.Permutation(hintWorkload.getUniverse())) {
             String sequence = permutation.substring(0, permutation.length() - 1);
             String hash = getHash(sequence);
-            //System.out.println(hash);
             if (hash.equals(hintWorkload.getHash())) {
                 this.sender().tell(new Master.HintSuccessMessage(hintWorkload.getPasswordID(), sequence), this.self());
                 this.sender().tell(new Master.PullRequest(), this.self());
@@ -139,8 +139,32 @@ public class Worker extends AbstractLoggingActor {
     }
 
     private void handle(PasswordWorkload passwordWorkload) {
+        Iterators.CombinationNoRepetition charCombinationIterator = new Iterators.CombinationNoRepetition(
+                passwordWorkload.getUniverse(),
+                passwordWorkload.getNumCharsUsedForPassword());
+
+        for (String charCombination: charCombinationIterator) {
+            if (checkHashesForCharCombination(passwordWorkload, charCombination.toCharArray())) {
+                return;
+            }
+        }
         this.sender().tell(new Master.PullRequest(), this.self());
     }
+
+    private boolean checkHashesForCharCombination(PasswordWorkload workload, char[] charsToUse) {
+        Iterators.CombinationRepetition pwCombinationIterator = new Iterators.CombinationRepetition(
+                charsToUse, workload.getPasswordLength());
+        for (String combination: pwCombinationIterator) {
+            String hash = getHash(combination);
+            if (hash.equals(workload.getHash())) {
+                this.sender().tell(new Master.PasswordSuccessMessage(workload.getPasswordID(), combination), this.self());
+                this.sender().tell(new Master.PullRequest(), this.self());
+                return true;
+            }
+        }
+        return false;
+    }
+
 
     private void handle(CurrentClusterState message) {
         message.getMembers().forEach(member -> {
