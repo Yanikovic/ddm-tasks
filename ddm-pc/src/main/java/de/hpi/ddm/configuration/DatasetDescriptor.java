@@ -1,5 +1,14 @@
 package de.hpi.ddm.configuration;
 
+import com.opencsv.CSVParser;
+import com.opencsv.CSVParserBuilder;
+import com.opencsv.CSVReader;
+import com.opencsv.CSVReaderBuilder;
+import com.opencsv.enums.CSVReaderNullFieldIndicator;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -10,22 +19,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import com.opencsv.CSVParser;
-import com.opencsv.CSVParserBuilder;
-import com.opencsv.CSVReader;
-import com.opencsv.CSVReaderBuilder;
-import com.opencsv.enums.CSVReaderNullFieldIndicator;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 @Data @NoArgsConstructor @AllArgsConstructor
 public class DatasetDescriptor implements Serializable {
 	
 	private static final long serialVersionUID = 1985782678973727520L;
 	
-	private String datasetName = "passwords";
+	private String datasetName = "passwords2";
 	private String datasetPath = "data" + File.separator;
 	private String datasetEnding = ".csv";
 

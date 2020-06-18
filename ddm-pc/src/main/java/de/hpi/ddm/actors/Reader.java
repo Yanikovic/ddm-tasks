@@ -1,16 +1,15 @@
 package de.hpi.ddm.actors;
 
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-
-import com.opencsv.CSVReader;
-
 import akka.actor.AbstractLoggingActor;
 import akka.actor.Props;
+import com.opencsv.CSVReader;
 import de.hpi.ddm.configuration.ConfigurationSingleton;
 import de.hpi.ddm.configuration.DatasetDescriptorSingleton;
 import lombok.Data;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Reader extends AbstractLoggingActor {
 
@@ -31,6 +30,11 @@ public class Reader extends AbstractLoggingActor {
 	@Data
 	public static class ReadMessage implements Serializable {
 		private static final long serialVersionUID = -3254147511955012292L;
+	}
+
+	@Data
+	public static class InitialInfoRequest implements Serializable {
+		private static final long serialVersionUID = 7529058390541091960L;
 	}
 	
 	/////////////////
@@ -71,13 +75,17 @@ public class Reader extends AbstractLoggingActor {
 	public Receive createReceive() {
 		return receiveBuilder()
 				.match(ReadMessage.class, this::handle)
+				.match(InitialInfoRequest.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
 
+	private void handle(InitialInfoRequest message) throws Exception {
+		this.sender().tell(new Master.InitialInfoMessage(buffer.get(0)), this.self());
+	}
+
 	private void handle(ReadMessage message) throws Exception {
 		this.sender().tell(new Master.BatchMessage(new ArrayList<>(this.buffer)), this.self());
-		
 		this.read();
 	}
 	

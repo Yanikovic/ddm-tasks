@@ -22,7 +22,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     ////////////////////////
 
     public static final String DEFAULT_NAME = "largeMessageProxy";
-    public static final int DEFAULT_BATCH_SIZE = 100000;
+    public static final int DEFAULT_BATCH_SIZE = 128000;
 
 
     public static Props props() {
@@ -69,6 +69,14 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         private byte[] bytes;
     }
 
+    @Data @NoArgsConstructor @AllArgsConstructor
+    public static class LocalMessage<T> implements Serializable {
+        private static final long serialVersionUID = -7642088498409543951L;
+        private T bytes;
+        private ActorRef sender;
+        private ActorRef receiver;
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -98,6 +106,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(LargeMessage.class, this::handle)
+                .match(LocalMessage.class, this::handle)
                 .match(BytesBatchMessage.class, this::handle)
                 .match(PreLargeMessage.class, this::handle)
                 .match(PostLargeMessage.class, this::handle)
@@ -124,11 +133,15 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         ActorSelection receiverProxy = this.context().actorSelection(receiver.path().child(DEFAULT_NAME));
         if (receiverProxy.anchorPath().toString().contains("@")) {
             System.out.println("remote");
+            handleRemote(receiverProxy, message);
         } else {
             System.out.println("local");
+            receiverProxy.tell(new LocalMessage<>(message.getMessage(), this.sender(), message.getReceiver()),
+                    this.self());
         }
+    }
 
-
+    private void handleRemote(ActorSelection receiverProxy, LargeMessage<?> message) {
         byte[] bytes = serialize(message.getMessage(), serialization);
         int serializerID = serialization.findSerializerFor(message.getMessage()).identifier();
         String manifest = Serializers.manifestFor(serialization.findSerializerFor(message.getMessage()), message.getMessage());
@@ -136,6 +149,12 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         receiverProxy.tell(new PreLargeMessage(bytes.length), this.self());
 
         byte[][] byteBatches = splitSerializedObject(bytes);
+        System.out.println(byteBatches.length);
+
+        /*
+        system.scheduler().scheduleOnce(
+        Duration.ofMillis(50), testActor, "foo", system.dispatcher(), ActorRef.noSender());
+         */
 
         for (byte[] batch : byteBatches) {
             receiverProxy.tell(new BytesBatchMessage(batch), this.self());
@@ -153,6 +172,10 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     private void handle(BytesBatchMessage message) {
         // Reassemble the message content, deserialize it and/or load the content from some local location before forwarding its content.
         receiverProxyAssembler.put(message.getBytes());
+    }
+
+    private void handle(LocalMessage<?> message) {
+        message.getReceiver().tell(message.getBytes(), message.getSender());
     }
 
     ////////////////////
