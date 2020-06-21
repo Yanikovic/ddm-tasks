@@ -23,14 +23,6 @@ public class PasswordComplexity {
         this.numCharsUsedForPassword = numChars - numHints;
     }
 
-    public PasswordComplexity(int numChars, int numHints, int passwordLength) {
-        this.numChars = numChars;
-        this.numHints = numHints;
-        this.passwordLength = passwordLength;
-        this.hintLength = numChars - 1;
-        this.numCharsUsedForPassword = numChars - numHints;
-    }
-
     public void calcNumberOfHintsToCrack() {
         int hintComplexity = getHintComplexity();
         int[] pwComplexityWithHints = getPasswordComplexityWithHints();

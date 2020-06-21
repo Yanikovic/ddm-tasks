@@ -22,7 +22,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     ////////////////////////
 
     public static final String DEFAULT_NAME = "largeMessageProxy";
-    public static final int DEFAULT_BATCH_SIZE = 128000;
+    public static final int DEFAULT_BATCH_SIZE = 256000;
 
 
     public static Props props() {
@@ -134,10 +134,8 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         ActorRef receiver = message.getReceiver();
         ActorSelection receiverProxy = this.context().actorSelection(receiver.path().child(DEFAULT_NAME));
         if (receiverProxy.anchorPath().toString().contains("@")) {
-            System.out.println("remote");
             handleRemote(receiverProxy, message);
         } else {
-            System.out.println("local");
             receiverProxy.tell(new LocalMessage<>(message.getMessage(), this.sender(), message.getReceiver()),
                     this.self());
         }
@@ -151,7 +149,6 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         receiverProxy.tell(new PreLargeMessage(bytes.length), this.self());
 
         byte[][] byteBatches = splitSerializedObject(bytes);
-        System.out.println(byteBatches.length);
 
         /*
         system.scheduler().scheduleOnce(

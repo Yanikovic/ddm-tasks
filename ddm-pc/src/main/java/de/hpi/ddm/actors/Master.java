@@ -52,13 +52,11 @@ public class Master extends AbstractLoggingActor {
     }
 
     @Data
-    @AllArgsConstructor
     public static class FinishedReadingMessage implements Serializable {
         private static final long serialVersionUID = 6569477591743716363L;
     }
 
     @Data
-    @AllArgsConstructor
     public static class ShutdownMessage implements Serializable {
         private static final long serialVersionUID = 1147276424227641153L;
     }
@@ -72,17 +70,20 @@ public class Master extends AbstractLoggingActor {
     }
 
     @Data
+    @NoArgsConstructor
     public static class RegistrationMessage implements Serializable {
         private static final long serialVersionUID = 3303081601659723997L;
     }
 
     @Data
+    @NoArgsConstructor
     public static class PullRequest implements Serializable {
         private static final long serialVersionUID = 3303081601659723997L;
     }
 
     @Data
     @AllArgsConstructor
+    @NoArgsConstructor
     public static class HintSuccessMessage implements Serializable {
         private static final long serialVersionUID = -8116992589322209006L;
         private int passwordID;
@@ -91,6 +92,7 @@ public class Master extends AbstractLoggingActor {
 
     @Data
     @AllArgsConstructor
+    @NoArgsConstructor
     public static class PasswordSuccessMessage implements Serializable {
         private static final long serialVersionUID = 7452079235007937570L;
         private int passwordID;
@@ -156,6 +158,7 @@ public class Master extends AbstractLoggingActor {
         String password = passwordSuccessMessage.getPassword();
         PasswordInfo passwordInfo = passwords.remove(id);
         String result = String.format("Result(ID: %d, Name: %s, Password: %s)", id, passwordInfo.getName(), password);
+        this.log().info(result);
         this.collector.tell(new Collector.CollectMessage(result), this.self());
 
         if (passwords.isEmpty() && workloads.isEmpty()) {
@@ -166,6 +169,7 @@ public class Master extends AbstractLoggingActor {
     private void handle(HintSuccessMessage hintSuccessMessage) {
         int id = hintSuccessMessage.getPasswordID();
         String hint = hintSuccessMessage.getHint();
+        this.log().info("(ID: " + id + ", Hint: " + hint + ")");
         PasswordInfo pwInfo = passwords.get(id);
         pwInfo.applyHint(hint);
         pwInfo.incrementHintIndex();
@@ -214,7 +218,7 @@ public class Master extends AbstractLoggingActor {
             PasswordInfo pwInfo = new PasswordInfo(line);
             passwords.put(pwID, pwInfo);
 
-            //passwordComplexity.setNumHintsToCrack(2);
+            passwordComplexity.setNumHintsToCrack(1);
 
             if (passwordComplexity.getNumHintsToCrack() == 0) {
                 createPasswordWorkload(pwID, pwInfo);

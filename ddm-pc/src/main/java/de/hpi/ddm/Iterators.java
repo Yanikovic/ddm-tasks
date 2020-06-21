@@ -9,21 +9,6 @@ import java.util.NoSuchElementException;
 
 public class Iterators {
 
-    public static void main(String[] args) {
-        Iterator<String> combinations = new CombinationRepetition(new char[]{'A', 'B', 'C', 'D', 'E'}, 6).iterator();
-        int ctr = 0;
-        while (combinations.hasNext()) {
-            System.out.println(combinations.next());
-            ctr++;
-        }
-        System.out.println(ctr);
-        /*
-        for (String sequence: new CombinationRepetition(new char[]{'A', 'B', 'C', 'D'}, 3)) {
-            System.out.println(sequence);
-        }
-        */
-    }
-
     public static class CombinationRepetition implements Iterable<String> {
 
         private final char[] universe;

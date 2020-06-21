@@ -55,6 +55,7 @@ public class Worker extends AbstractLoggingActor {
     }
 
     @Data
+    @NoArgsConstructor
     public static class PasswordWorkload extends Workload implements Serializable {
         private static final long serialVersionUID = -8426611880712186309L;
         private int passwordLength;
@@ -68,6 +69,7 @@ public class Worker extends AbstractLoggingActor {
     }
 
     @Data
+    @NoArgsConstructor
     public static class HintWorkload extends Workload implements Serializable {
         private static final long serialVersionUID = 5183210312715474159L;
 
@@ -77,6 +79,7 @@ public class Worker extends AbstractLoggingActor {
     }
 
     @Data
+    @NoArgsConstructor
     public static class EmptyWorkload extends Workload implements Serializable {
         private static final long serialVersionUID = 2632231490626996777L;
     }
@@ -134,7 +137,7 @@ public class Worker extends AbstractLoggingActor {
     }
 
     private void handle(EmptyWorkload emptyWorkload) {
-        Timeout.apply(5, TimeUnit.SECONDS);
+        Timeout.apply(2, TimeUnit.SECONDS);
         this.sender().tell(new Master.PullRequest(), this.self());
     }
 

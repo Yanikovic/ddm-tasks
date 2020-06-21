@@ -14,5 +14,4 @@ public abstract class Command {
 
 	@Parameter(names = { "-w", "--numWorkers" }, description = "The number of workers (indexers/validators) to start locally; should be at least one if the algorithm is started standalone (otherwise there are no workers to run the discovery)", required = false)
 	int numWorkers = ConfigurationSingleton.get().getNumWorkers();
-	
 }

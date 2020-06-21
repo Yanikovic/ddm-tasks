@@ -24,7 +24,7 @@ public class DatasetDescriptor implements Serializable {
 	
 	private static final long serialVersionUID = 1985782678973727520L;
 	
-	private String datasetName = "passwords";
+	private String datasetName = "passwords2";
 	private String datasetPath = "data" + File.separator;
 	private String datasetEnding = ".csv";
 

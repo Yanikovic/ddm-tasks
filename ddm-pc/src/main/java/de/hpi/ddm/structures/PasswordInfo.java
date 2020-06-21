@@ -5,12 +5,14 @@ import it.unimi.dsi.fastutil.chars.CharSet;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
+import java.io.Serializable;
 import java.util.Arrays;
 
 @Data
 @AllArgsConstructor
-public class PasswordInfo {
+public class PasswordInfo implements Serializable {
 
+    private static final long serialVersionUID = 4649112340110301180L;
     private String name;
     private char[] universe;
     private char[] passwordChars;
