@@ -10,19 +10,20 @@ import akka.cluster.ClusterEvent.MemberRemoved;
 import akka.cluster.ClusterEvent.MemberUp;
 import akka.cluster.Member;
 import akka.cluster.MemberStatus;
-import akka.util.Timeout;
-import de.hpi.ddm.Iterators;
 import de.hpi.ddm.MasterSystem;
 import de.hpi.ddm.structures.PasswordInfo;
+import de.hpi.ddm.utils.CombinationsNoRepetition;
+import de.hpi.ddm.utils.CombinationsRepetition;
+import de.hpi.ddm.utils.Permutations;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.concurrent.TimeUnit;
 
 public class Worker extends AbstractLoggingActor {
 
@@ -54,6 +55,7 @@ public class Worker extends AbstractLoggingActor {
         private String hash;
     }
 
+    @EqualsAndHashCode(callSuper = true)
     @Data
     @NoArgsConstructor
     public static class PasswordWorkload extends Workload implements Serializable {
@@ -68,6 +70,7 @@ public class Worker extends AbstractLoggingActor {
         }
     }
 
+    @EqualsAndHashCode(callSuper = true)
     @Data
     @NoArgsConstructor
     public static class HintWorkload extends Workload implements Serializable {
@@ -76,12 +79,6 @@ public class Worker extends AbstractLoggingActor {
         public HintWorkload(int passwordID, char[] universe, String hash) {
             super(passwordID, universe, hash);
         }
-    }
-
-    @Data
-    @NoArgsConstructor
-    public static class EmptyWorkload extends Workload implements Serializable {
-        private static final long serialVersionUID = 2632231490626996777L;
     }
 
     /////////////////
@@ -118,50 +115,45 @@ public class Worker extends AbstractLoggingActor {
                 .match(MemberRemoved.class, this::handle)
                 .match(PasswordWorkload.class, this::handle)
                 .match(HintWorkload.class, this::handle)
-                .match(EmptyWorkload.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
     }
 
     private void handle(HintWorkload hintWorkload) {
-        for (String permutation: new Iterators.Permutation(hintWorkload.getUniverse())) {
+        for (String permutation : new Permutations(hintWorkload.getUniverse())) {
             String sequence = permutation.substring(0, permutation.length() - 1);
             String hash = getHash(sequence);
             if (hash.equals(hintWorkload.getHash())) {
-                this.sender().tell(new Master.HintSuccessMessage(hintWorkload.getPasswordID(), sequence), this.self());
-                this.sender().tell(new Master.PullRequest(), this.self());
+                this.sender().tell(
+                        new Master.HintSuccessMessage(hintWorkload.getPasswordID(), sequence),
+                        this.self());
                 return;
             }
         }
-        this.sender().tell(new Master.PullRequest(), this.self());
-    }
-
-    private void handle(EmptyWorkload emptyWorkload) {
-        Timeout.apply(2, TimeUnit.SECONDS);
-        this.sender().tell(new Master.PullRequest(), this.self());
     }
 
     private void handle(PasswordWorkload passwordWorkload) {
-        Iterators.CombinationNoRepetition charCombinationIterator = new Iterators.CombinationNoRepetition(
+        CombinationsNoRepetition charCombinationIterator = new CombinationsNoRepetition(
                 passwordWorkload.getUniverse(),
                 passwordWorkload.getNumCharsUsedForPassword());
 
-        for (String charCombination: charCombinationIterator) {
+        for (String charCombination : charCombinationIterator) {
             if (checkHashesForCharCombination(passwordWorkload, charCombination.toCharArray())) {
                 return;
             }
         }
-        this.sender().tell(new Master.PullRequest(), this.self());
     }
 
     private boolean checkHashesForCharCombination(PasswordWorkload workload, char[] charsToUse) {
-        Iterators.CombinationRepetition pwCombinationIterator = new Iterators.CombinationRepetition(
+        CombinationsRepetition pwCombinationIterator = new CombinationsRepetition(
                 charsToUse, workload.getPasswordLength());
-        for (String combination: pwCombinationIterator) {
+
+        for (String combination : pwCombinationIterator) {
             String hash = getHash(combination);
             if (hash.equals(workload.getHash())) {
-                this.sender().tell(new Master.PasswordSuccessMessage(workload.getPasswordID(), combination), this.self());
-                this.sender().tell(new Master.PullRequest(), this.self());
+                this.sender().tell(
+                        new Master.PasswordSuccessMessage(workload.getPasswordID(), combination),
+                        this.self());
                 return true;
             }
         }
@@ -187,16 +179,13 @@ public class Worker extends AbstractLoggingActor {
             this.getContext()
                     .actorSelection(member.address() + "/user/" + Master.DEFAULT_NAME)
                     .tell(new Master.RegistrationMessage(), this.self());
-
-            this.getContext()
-                    .actorSelection(member.address() + "/user/" + Master.DEFAULT_NAME)
-                    .tell(new Master.PullRequest(), this.self());
         }
     }
 
     private void handle(MemberRemoved message) {
-        if (this.masterSystem.equals(message.member()))
+        if (this.masterSystem.equals(message.member())) {
             this.self().tell(PoisonPill.getInstance(), ActorRef.noSender());
+        }
     }
 
     private String getHash(String line) {

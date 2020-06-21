@@ -2,14 +2,14 @@ package de.hpi.ddm.structures;
 
 import it.unimi.dsi.fastutil.chars.CharArraySet;
 import it.unimi.dsi.fastutil.chars.CharSet;
-import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.Arrays;
 
 @Data
-@AllArgsConstructor
+@NoArgsConstructor
 public class PasswordInfo implements Serializable {
 
     private static final long serialVersionUID = 4649112340110301180L;
@@ -32,7 +32,7 @@ public class PasswordInfo implements Serializable {
         this.currHintIndex = 0;
     }
 
-    public String getCurrentHint() {
+    public String getCurrentHintHash() {
         return hintHashes[currHintIndex];
     }
 
@@ -46,12 +46,12 @@ public class PasswordInfo implements Serializable {
 
     public void applyHint(String hint) {
         CharSet hintAsSet = new CharArraySet(hint.toCharArray());
-        CharSet hintRemovedSet = new CharArraySet(Arrays.copyOf(passwordChars, passwordChars.length));
-        hintRemovedSet.removeAll(hintAsSet);
+        CharSet currPasswordCharsAsSet = new CharArraySet(Arrays.copyOf(passwordChars, passwordChars.length));
+        currPasswordCharsAsSet.removeAll(hintAsSet);
 
-        CharSet currCharSet = new CharArraySet(Arrays.copyOf(passwordChars, passwordChars.length));
-        currCharSet.removeAll(hintRemovedSet);
+        CharSet witchHint = new CharArraySet(Arrays.copyOf(passwordChars, passwordChars.length));
+        witchHint.removeAll(currPasswordCharsAsSet);
 
-        passwordChars = currCharSet.toCharArray();
+        passwordChars = witchHint.toCharArray();
     }
 }

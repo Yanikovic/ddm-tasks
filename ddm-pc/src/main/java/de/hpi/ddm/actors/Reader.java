@@ -88,12 +88,12 @@ public class Reader extends AbstractLoggingActor {
 
     private void handle(FinishedReadingRequest finishedReadingRequest) {
         if (this.buffer.isEmpty()) {
-            this.sender().tell(new Master.FinishedReadingMessage(), this.self());
+            this.sender().tell(new Master.FinishedReadingResponse(), this.self());
         }
     }
 
     private void handle(InitialInfoRequest message) throws Exception {
-        this.sender().tell(new Master.InitialInfoMessage(buffer.get(0)), this.self());
+        this.sender().tell(new Master.InitialInfoResponse(buffer.get(0)), this.self());
     }
 
     private void handle(ReadMessage message) throws Exception {

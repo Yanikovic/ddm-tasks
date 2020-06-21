@@ -26,6 +26,7 @@ public class PasswordComplexity {
     public void calcNumberOfHintsToCrack() {
         int hintComplexity = getHintComplexity();
         int[] pwComplexityWithHints = getPasswordComplexityWithHints();
+
         for (int i = 0; i < pwComplexityWithHints.length; i++) {
             if (pwComplexityWithHints[i] < hintComplexity) {
                 this.numHintsToCrack = i;
@@ -41,6 +42,7 @@ public class PasswordComplexity {
 
     private int[] getPasswordComplexityWithHints() {
         int[] complexityAfterEachHint = new int[numHints + 1];
+
         for (int hintsChecked = 0; hintsChecked < complexityAfterEachHint.length; hintsChecked++) {
             complexityAfterEachHint[hintsChecked] = getPasswordComplexity(numChars - hintsChecked);
         }

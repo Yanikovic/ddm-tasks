@@ -10,13 +10,6 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.util.*;
 
-/*
-TODO:
-- hint workloads erstellen
-- abarbeitung von hints implementieren
-- update der passwords im master anhand der geknackten hints implementieren
-- routine zum Erstellen eines password workloads, wenn alle hints geknackt sind
- */
 public class Master extends AbstractLoggingActor {
 
     ////////////////////////
@@ -46,13 +39,13 @@ public class Master extends AbstractLoggingActor {
 
     @Data
     @AllArgsConstructor
-    public static class InitialInfoMessage implements Serializable {
+    public static class InitialInfoResponse implements Serializable {
         private static final long serialVersionUID = -4780440373749233127L;
         private String[] line;
     }
 
     @Data
-    public static class FinishedReadingMessage implements Serializable {
+    public static class FinishedReadingResponse implements Serializable {
         private static final long serialVersionUID = 6569477591743716363L;
     }
 
@@ -72,12 +65,6 @@ public class Master extends AbstractLoggingActor {
     @Data
     @NoArgsConstructor
     public static class RegistrationMessage implements Serializable {
-        private static final long serialVersionUID = 3303081601659723997L;
-    }
-
-    @Data
-    @NoArgsConstructor
-    public static class PullRequest implements Serializable {
         private static final long serialVersionUID = 3303081601659723997L;
     }
 
@@ -108,8 +95,11 @@ public class Master extends AbstractLoggingActor {
     private final List<ActorRef> workers;
 
     private PasswordComplexity passwordComplexity;
-    private Queue<Worker.Workload> workloads;
-    private HashMap<Integer, PasswordInfo> passwords;
+    private Map<Integer, PasswordInfo> passwords;
+
+    private Queue<Worker.Workload> unassignedWork;
+    private Queue<ActorRef> idleWorkers;
+    private Map<ActorRef, Worker.Workload> busyWorkers;
 
     private long startTime;
 
@@ -120,8 +110,10 @@ public class Master extends AbstractLoggingActor {
     @Override
     public void preStart() {
         Reaper.watchWithDefaultReaper(this);
-        workloads = new LinkedList<>();
-        passwords = new HashMap<>(1000);
+        unassignedWork = new LinkedList<>();
+        idleWorkers = new LinkedList<>();
+        busyWorkers = new HashMap<>();
+        passwords = new HashMap<>(200);
     }
 
     ////////////////////
@@ -132,44 +124,57 @@ public class Master extends AbstractLoggingActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(StartMessage.class, this::handle)
-                .match(InitialInfoMessage.class, this::handle)
+                .match(InitialInfoResponse.class, this::handle)
                 .match(BatchMessage.class, this::handle)
                 .match(Terminated.class, this::handle)
-                .match(FinishedReadingMessage.class, this::handle)
+                .match(FinishedReadingResponse.class, this::handle)
                 .match(ShutdownMessage.class, this::handle)
                 .match(RegistrationMessage.class, this::handle)
-                .match(PullRequest.class, this::handle)
                 .match(HintSuccessMessage.class, this::handle)
                 .match(PasswordSuccessMessage.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
     }
 
-    private void handle(ShutdownMessage shutdownMessage) {
-        this.terminate();
+    protected void handle(StartMessage message) {
+        this.startTime = System.currentTimeMillis();
+        this.reader.tell(new Reader.InitialInfoRequest(), this.self());
     }
 
-    private void handle(FinishedReadingMessage finishedMessage) {
-        this.collector.tell(new Collector.PrintMessage(), this.self());
+    protected void handle(RegistrationMessage message) {
+        this.context().watch(this.sender());
+        this.workers.add(this.sender());
+        this.idleWorkers.add(this.sender());
+
+        assignWork(this.sender());
+        this.log().info("Registered {}", this.sender());
     }
 
-    private void handle(PasswordSuccessMessage passwordSuccessMessage) {
+    protected void handle(InitialInfoResponse message) {
+        PasswordInfo initialInfo = new PasswordInfo(message.line);
+        passwordComplexity = new PasswordComplexity(initialInfo);
+        passwordComplexity.calcNumberOfHintsToCrack();
+
+        this.reader.tell(new Reader.ReadMessage(), this.self());
+    }
+
+    protected void handle(PasswordSuccessMessage passwordSuccessMessage) {
         int id = passwordSuccessMessage.getPasswordID();
         String password = passwordSuccessMessage.getPassword();
         PasswordInfo passwordInfo = passwords.remove(id);
         String result = String.format("Result(ID: %d, Name: %s, Password: %s)", id, passwordInfo.getName(), password);
-        this.log().info(result);
         this.collector.tell(new Collector.CollectMessage(result), this.self());
 
-        if (passwords.isEmpty() && workloads.isEmpty()) {
+        reassignWork(this.sender());
+
+        if (passwords.isEmpty() && unassignedWork.isEmpty() && busyWorkers.isEmpty()) {
             this.reader.tell(new Reader.FinishedReadingRequest(), this.self());
         }
     }
 
-    private void handle(HintSuccessMessage hintSuccessMessage) {
+    protected void handle(HintSuccessMessage hintSuccessMessage) {
         int id = hintSuccessMessage.getPasswordID();
         String hint = hintSuccessMessage.getHint();
-        this.log().info("(ID: " + id + ", Hint: " + hint + ")");
         PasswordInfo pwInfo = passwords.get(id);
         pwInfo.applyHint(hint);
         pwInfo.incrementHintIndex();
@@ -180,27 +185,14 @@ public class Master extends AbstractLoggingActor {
         } else {
             createPasswordWorkload(id, pwInfo);
         }
+
+        reassignWork(this.sender());
     }
 
-    private void handle(PullRequest pullRequest) {
-        if (!workloads.isEmpty()) {
-            this.sender().tell(workloads.remove(), this.self());
-        } else {
-            this.sender().tell(new Worker.EmptyWorkload(), this.self());
-        }
-    }
-
-    protected void handle(StartMessage message) {
-        this.startTime = System.currentTimeMillis();
-        this.reader.tell(new Reader.InitialInfoRequest(), this.self());
-    }
-
-    protected void handle(InitialInfoMessage message) {
-        PasswordInfo initialInfo = new PasswordInfo(message.line);
-        passwordComplexity = new PasswordComplexity(initialInfo);
-        passwordComplexity.calcNumberOfHintsToCrack();
-
-        this.reader.tell(new Reader.ReadMessage(), this.self());
+    private void reassignWork(ActorRef worker) {
+        busyWorkers.remove(worker);
+        idleWorkers.add(worker);
+        assignWork(worker);
     }
 
     protected void handle(BatchMessage message) {
@@ -208,7 +200,7 @@ public class Master extends AbstractLoggingActor {
             return;
         }
         processBatch(message.getLines());
-        //this.collector.tell(new Collector.CollectMessage("Processed batch of size " + message.getLines().size()), this.self());
+        assignWork();
         this.reader.tell(new Reader.ReadMessage(), this.self());
     }
 
@@ -218,8 +210,6 @@ public class Master extends AbstractLoggingActor {
             PasswordInfo pwInfo = new PasswordInfo(line);
             passwords.put(pwID, pwInfo);
 
-            passwordComplexity.setNumHintsToCrack(1);
-
             if (passwordComplexity.getNumHintsToCrack() == 0) {
                 createPasswordWorkload(pwID, pwInfo);
             } else {
@@ -228,18 +218,68 @@ public class Master extends AbstractLoggingActor {
         }
     }
 
+    protected void handle(Terminated message) {
+        ActorRef terminatedWorker = message.getActor();
+        this.context().unwatch(terminatedWorker);
+        this.workers.remove(terminatedWorker);
+        if (busyWorkers.containsKey(terminatedWorker)) {
+            Worker.Workload work = busyWorkers.remove(terminatedWorker);
+            assignWork(work);
+        } else {
+            idleWorkers.remove(terminatedWorker);
+        }
+        this.log().info("Unregistered {}", message.getActor());
+    }
+
     private void createHintWorkload(int passwordID, PasswordInfo passwordInfo) {
-        workloads.add(new Worker.HintWorkload(passwordID,
+        unassignedWork.add(new Worker.HintWorkload(passwordID,
                 passwordInfo.getUniverse(),
-                passwordInfo.getCurrentHint()));
+                passwordInfo.getCurrentHintHash()));
     }
 
     private void createPasswordWorkload(int passwordID, PasswordInfo passwordInfo) {
-        workloads.add(new Worker.PasswordWorkload(passwordID,
+        unassignedWork.add(new Worker.PasswordWorkload(passwordID,
                 passwordInfo.getPasswordChars(),
                 passwordInfo));
     }
 
+    private void assignWork(ActorRef worker) {
+        if (!unassignedWork.isEmpty()) {
+            Worker.Workload work = unassignedWork.remove();
+            worker.tell(work, this.self());
+            idleWorkers.remove(worker);
+            busyWorkers.put(worker, work);
+        }
+    }
+
+    private void assignWork(Worker.Workload work) {
+        if (!idleWorkers.isEmpty()) {
+            ActorRef idleWorker = idleWorkers.remove();
+            idleWorker.tell(work, this.self());
+            busyWorkers.put(idleWorker, work);
+        } else {
+            unassignedWork.add(work);
+        }
+    }
+
+    private void assignWork() {
+        if (idleWorkers.isEmpty() || unassignedWork.isEmpty()) {
+            return;
+        }
+        ActorRef worker = idleWorkers.remove();
+        Worker.Workload work = unassignedWork.remove();
+        worker.tell(work, this.self());
+        busyWorkers.put(worker, work);
+        assignWork();
+    }
+
+    private void handle(FinishedReadingResponse finishedMessage) {
+        this.collector.tell(new Collector.PrintMessage(), this.self());
+    }
+
+    private void handle(ShutdownMessage shutdownMessage) {
+        this.terminate();
+    }
 
     protected void terminate() {
         this.reader.tell(PoisonPill.getInstance(), ActorRef.noSender());
@@ -254,17 +294,5 @@ public class Master extends AbstractLoggingActor {
 
         long executionTime = System.currentTimeMillis() - this.startTime;
         this.log().info("Algorithm finished in {} ms", executionTime);
-    }
-
-    protected void handle(RegistrationMessage message) {
-        this.context().watch(this.sender());
-        this.workers.add(this.sender());
-//		this.log().info("Registered {}", this.sender());
-    }
-
-    protected void handle(Terminated message) {
-        this.context().unwatch(message.getActor());
-        this.workers.remove(message.getActor());
-//		this.log().info("Unregistered {}", message.getActor());
     }
 }

@@ -86,12 +86,8 @@ public class Master extends AbstractLoggingActor {
 		this.context().watch(this.sender());
 		this.workers.add(this.sender());
 		this.log().info("Registered {}", this.sender());
-		// this code runs as soon as we get a registration message from a worker that expects some work
-		// we construct a message to our own large message proxy
-		// the receiver of the large message is the worker that registered in this moment
-		// we (master) are the sender of the message
+
 		this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>(this.data, this.sender()), this.self());
-		//this.largeMessageProxy.tell(new LargeMessageProxy.LargeMessage<>("Dies ist ein Test String", this.sender()), this.self());
 	}
 	
 	protected void handle(Terminated message) {

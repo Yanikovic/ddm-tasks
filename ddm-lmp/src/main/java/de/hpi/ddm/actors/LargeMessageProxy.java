@@ -150,19 +150,10 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 
         byte[][] byteBatches = splitSerializedObject(bytes);
 
-        /*
-        system.scheduler().scheduleOnce(
-        Duration.ofMillis(50), testActor, "foo", system.dispatcher(), ActorRef.noSender());
-         */
-
         for (byte[] batch : byteBatches) {
             receiverProxy.tell(new BytesBatchMessage(batch), this.self());
         }
-        // construct message for receiver proxy
-        // in the message we encode the master as the sender and the worker as the receiver (no proxy info included)
-        // this.self is the actor ref to ourselves (in this case the sender side of the proxy)
-        // this.sender is the sender of the large message we currently deal with (master)
-        // message.getReceiver is the true receiver of the large message which is a worker
+
         receiverProxy
                 .tell(new PostLargeMessage(this.sender(), message.getReceiver(), serializerID, manifest),
                         this.self());
