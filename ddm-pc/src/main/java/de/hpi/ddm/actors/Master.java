@@ -145,7 +145,6 @@ public class Master extends AbstractLoggingActor {
         this.context().watch(this.sender());
         this.workers.add(this.sender());
         this.idleWorkers.add(this.sender());
-
         assignWork(this.sender());
         this.log().info("Registered {}", this.sender());
     }
@@ -180,19 +179,18 @@ public class Master extends AbstractLoggingActor {
         pwInfo.incrementHintIndex();
         passwords.put(id, pwInfo);
 
-        if (pwInfo.getCurrHintIndex() < passwordComplexity.getNumHintsToCrack()) {
-            createHintWorkload(id, pwInfo);
-        } else {
+        if (pwInfo.getCurrHintIndex() == passwordComplexity.getNumHintsToCrack()) {
             createPasswordWorkload(id, pwInfo);
         }
-
         reassignWork(this.sender());
     }
 
     private void reassignWork(ActorRef worker) {
-        busyWorkers.remove(worker);
-        idleWorkers.add(worker);
-        assignWork(worker);
+        if (busyWorkers.containsKey(worker)) {
+            busyWorkers.remove(worker);
+            idleWorkers.add(worker);
+            assignWork(worker);
+        }
     }
 
     protected void handle(BatchMessage message) {
@@ -213,7 +211,7 @@ public class Master extends AbstractLoggingActor {
             if (passwordComplexity.getNumHintsToCrack() == 0) {
                 createPasswordWorkload(pwID, pwInfo);
             } else {
-                createHintWorkload(pwID, pwInfo);
+                createHintWorkloads(pwID, pwInfo);
             }
         }
     }
@@ -231,10 +229,13 @@ public class Master extends AbstractLoggingActor {
         this.log().info("Unregistered {}", message.getActor());
     }
 
-    private void createHintWorkload(int passwordID, PasswordInfo passwordInfo) {
-        unassignedWork.add(new Worker.HintWorkload(passwordID,
-                passwordInfo.getUniverse(),
-                passwordInfo.getCurrentHintHash()));
+    private void createHintWorkloads(int passwordID, PasswordInfo passwordInfo) {
+        String[] hintHashes = passwordInfo.getHintHashes();
+        for (int i = 0; i < passwordComplexity.getNumHintsToCrack(); i++) {
+            unassignedWork.add(new Worker.HintWorkload(passwordID,
+                    passwordInfo.getUniverse(),
+                    hintHashes[i]));
+        }
     }
 
     private void createPasswordWorkload(int passwordID, PasswordInfo passwordInfo) {

@@ -32,10 +32,6 @@ public class PasswordInfo implements Serializable {
         this.currHintIndex = 0;
     }
 
-    public String getCurrentHintHash() {
-        return hintHashes[currHintIndex];
-    }
-
     public int getNumberOfUniqueCharsUsed() {
         return universe.length - hintHashes.length;
     }
